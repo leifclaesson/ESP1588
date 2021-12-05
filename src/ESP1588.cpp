@@ -25,11 +25,16 @@
 #endif
 #include "ESP1588.h"
 
+#ifndef NO_GLOBAL_INSTANCES
+#ifndef NO_GLOBAL_ESP1588
 ESP1588 esp1588;
+#endif
+#endif
 
 ESP1588::ESP1588()
 {
 	trackerCurMaster.bIsMaster=true;
+	strShortStatus.reserve(16);
 }
 
 ESP1588::~ESP1588()
@@ -61,8 +66,8 @@ bool ESP1588::Begin()
 	}
 	else
 	{
-		Udp.stopAll();
-		Udp2.stopAll();
+		Udp.stop();
+		Udp2.stop();
 #ifdef PTP_MAIN_DEBUG
 		csprintf("### multicast join failed\n");
 #endif
@@ -90,6 +95,8 @@ void ESP1588::Loop()
 		if(len>=(int) sizeof(PTP_PACKET))
 		{
 			PTP_PACKET & pkt=*((PTP_PACKET *) packetBuffer);
+
+			pps_counter++;
 
 			if(pkt.header.domainNumber!=ucDomain) return;
 
@@ -162,6 +169,8 @@ void ESP1588::Loop()
 
 void ESP1588::Maintenance()
 {
+	last_pps_count=pps_counter;
+	pps_counter=0;
 
 	trackerCurMaster.Housekeeping();
 	trackerCandidate.Housekeeping();
@@ -173,7 +182,8 @@ void ESP1588::Maintenance()
 
 void ESP1588::Quit()
 {
-	Udp.stopAll();
+	Udp.stop();
+	Udp2.stop();
 	trackerCurMaster.Reset();
 	trackerCandidate.Reset();
 	syncmgr.Reset();
@@ -189,6 +199,17 @@ bool ESP1588::GetLockStatus()
 	return syncmgr.GetLockStatus();
 }
 
+bool ESP1588::GetEverLocked()
+{
+	if(bEverLocked) return true;
+	if(GetLockStatus())
+	{
+		bEverLocked=true;
+		return true;
+	}
+	return false;
+}
+
 bool ESP1588::GetEpochValid()
 {
 	return syncmgr.GetEpochValid();
@@ -202,4 +223,31 @@ uint64_t ESP1588::GetEpochMillis64()
 int16_t ESP1588::GetLastDiffMs()
 {
 	return syncmgr.GetLastDiffMs();
+}
+
+const String & ESP1588::GetShortStatusString()
+{
+	if(GetLockStatus())
+	{
+		strShortStatus="OK (";
+		strShortStatus+=String(GetLastDiffMs());
+		strShortStatus+="ms)";
+	}
+	else
+	{
+		if(GetEpochValid())
+		{
+			strShortStatus="not OK";
+		}
+		else
+		{
+			strShortStatus="NOT OK";
+		}
+	}
+	return strShortStatus;
+}
+
+uint16_t ESP1588::GetRawPPS()			//raw packets per second
+{
+	return last_pps_count;
 }

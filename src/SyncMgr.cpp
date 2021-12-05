@@ -111,21 +111,29 @@ void ESP1588_Sync::FeedSync(PTP_PACKET & pkt, int port)
 		ulAdjustmentTimestamp=ulNow;
 
 
+		//We'll accept the first packet as a baseline to compare against, but we know it might have been one of the very delayed ones,
+		//so let's not report that we're locked yet. Set the "initial diff finding" flag, and in a second or so, do one big jump
+		//based on the least delayed packet we found.
+
+		bInitialDiffFinding=true;
+		ulInitialDiffFindingTimestamp=ulNow;
+
+
 
 		if(ptpmillis64>1633942188395LL)	//if it's older than when I wrote this code it can't be valid, time machines notwithstanding.
 		{
-			bEpochValid=true;
+			bEpochValidInternal=true;
 		}
 		else
 		{
-			bEpochValid=false;
+			bEpochValidInternal=false;
 		}
 
 #ifdef PTP_SYNCMGR_DEBUG
 		csprintf("MILLIS64  %llu\n",ptpmillis64);
 #endif
 
-		ulOffset64=ptpmillis64 - GetMillis();
+		ulOffset64=ptpmillis64 - (millis()+ulOffset);
 	}
 
 	int32_t diff=ptpmillis-ulOffset-ulNow;
@@ -169,17 +177,33 @@ void ESP1588_Sync::FeedSync(PTP_PACKET & pkt, int port)
 	//if(diff<-1000) return;	//that's just too old, we're only interested in the newest packets anyway
 
 
-	//WiFi access points are often configured to send broadcast and multicast data in chunks, three or four times per second, instead of continuously.
-	//This feature is called DTIM (delivery traffic indication message) and the purpose is to let mobile device WiFi radios sleep most of the time,
+	//TL;DR -- For best accuracy we have to look at several packets and act only on the only the ones that incurred the least transmission delay.
+
+
+	//WiFi access points send broadcast and multicast data in chunks, along with the beacon (the same one that broadcasts the SSID),
+	//instead of continuously. The purpose of this is to let mobile device WiFi radios sleep most of the time,
 	//only waking up in time for the next broadcast/multicast delivery, in order to save battery.
+
+	//This feature is called DTIM (delivery traffic indication message).
+
+	//WiFi beacons are sent every 102.4 milliseconds, that is, roughly 10 times per second.
+	//Broadcasts/multicasts may be sent by every beacon (DTIM 1) but iPhone devices, in order to improve battery life, sleep through two beacons and wake up only
+	//every _third_ beacon. So, to accomodate this, the default setting in most access points these days DTIM 3, so that iPhones don't miss these packets.
+
+	//This means the PTP packets will arrive only at these intervals (perhaps three times per second!) no matter when they were sent, causing _extreme_ jitter.
+
 	//Unfortunately, this means most of the packets we get are too old to be useful! We only care about the latest packet, all the ones that were buffered are already too old.
 	//We need to filter for the most recent packets and base the rest of our logic on that.
-	//Because of this, there is no advantage in setting a high sync packet rate in our PTP clock. 1/8 second (-2) is appropriate, any more is just wasting data.
-	//If you have a separate WiFi network (SSID) for your IoT devices like I do, you can set DTIM to 1 on that network and avoid this problem completely, for greatly improved precision.
+	//Because of this, there is no advantage in setting a high sync packet rate in our PTP clock. 1/8 second (-2) is appropriate, any more is really just wasting data.
 
+	//If you have a separate WiFi network (SSID) for your IoT devices like I do, you can set DTIM to 1 on that network.
 	//See the following explanation: https://www.sniffwifi.com/2016/05/go-to-sleep-go-to-sleep-go-to-sleep.html
+
 	//Personally I care much more about ESP8266 and ESP32 than iPhones so if I only had one WiFi network and had to choose compromise settings,
 	//I'd still set DTIM to 1 and broadcast right through iPhone's naps. You snooze, you lose. :-)
+
+
+
 
 	diffHistory[diffHistoryIdx]=diff;
 
@@ -226,59 +250,97 @@ void ESP1588_Sync::FeedSync(PTP_PACKET & pkt, int port)
 
 	lastDiffMs=peak_diff;
 
-	if(abs(peak_diff)>=3) interval=2000;
-	if(abs(peak_diff)>=10) interval=1000;
 
-	if(bFastInitial)	//if we're far out, adjust more quickly
+	bool bWasDiffFinding=bInitialDiffFinding;
+
+	if(!bFirst && bInitialDiffFinding && (ulNow-ulInitialDiffFindingTimestamp)>1500)	//make ONE big adjustment to eat right through the jitter
 	{
-		if(abs(peak_diff)>=20) interval=250;
-		if(abs(peak_diff)>=40) interval=125;
+		bInitialDiffFinding=0;
+
+#ifdef PTP_SYNCMGR_DEBUG
+		csprintf("SyncMgr Initial diff adjustment: %d\n",peak_diff);
+#endif
+
+		ulOffset+=peak_diff;
+
+		for(int i=0;i<DIFFHIST_SIZE;i++)
+		{
+			if(diffHistory[i]!=-32768)
+			{
+				diffHistory[i]-=peak_diff;
+			}
+		}
+
+		peak_diff=0;
+
+
 	}
 
-
-
-	if(acceptedPackets>=5)
-	{
-
-		if(bFastInitial)	//..until we achieve initial "lock"
-		{
-			if(abs(peak_diff)<10) bFastInitial=false;
-		}
-
-		if(!bLockStatus)
-		{
-			if(abs(peak_diff)<10) bLockStatus=true;
-		}
-		else
-		{
-			if(abs(peak_diff)>20) bLockStatus=false;
-		}
-	}
 
 #ifdef PTP_SYNCMGR_DEBUG
 	char adjust[2]={' ',0};	//a one-char text string that contains space, plus or minus depending on what we're doing
 #endif
 
-	if((ulNow-ulAdjustmentTimestamp)>=(uint32_t) interval)
+	if(!bWasDiffFinding)
 	{
-		ulAdjustmentTimestamp=ulNow;
 
-		//nudge one millisecond at a time
 
-		if(peak_diff>1)
+		if(abs(peak_diff)>=3) interval=2000;
+		if(abs(peak_diff)>=10) interval=1000;
+
+		if(bFastInitial)	//if we're far out, adjust more quickly
 		{
-			ulOffset++;
-#ifdef PTP_SYNCMGR_DEBUG
-			adjust[0]='+';	//advance
-#endif
+			if(abs(peak_diff)>=20) interval=250;
+			if(abs(peak_diff)>=40) interval=125;
 		}
-		else if(peak_diff<-1)
+
+
+
+		if(acceptedPackets>=5)
 		{
-			ulOffset--;
-#ifdef PTP_SYNCMGR_DEBUG
-			adjust[0]='-';	//retard
-#endif
+
+			if(bFastInitial)	//..until we achieve initial "lock"
+			{
+				if(abs(peak_diff)<10) bFastInitial=false;
+			}
+
+			if(!bLockStatus)
+			{
+				if(abs(peak_diff)<10) bLockStatus=true;
+			}
+			else
+			{
+				if(abs(peak_diff)>20) bLockStatus=false;
+			}
 		}
+
+		if((ulNow-ulAdjustmentTimestamp)>=(uint32_t) interval)
+		{
+			ulAdjustmentTimestamp=ulNow;
+
+			//nudge one millisecond at a time
+
+			if(peak_diff>1)
+			{
+				ulOffset++;
+	#ifdef PTP_SYNCMGR_DEBUG
+				adjust[0]='+';	//advance
+	#endif
+			}
+			else if(peak_diff<-1)
+			{
+				ulOffset--;
+	#ifdef PTP_SYNCMGR_DEBUG
+				adjust[0]='-';	//retard
+	#endif
+			}
+		}
+
+		ulConfidentOffset=ulOffset;
+
+		ulConfidentOffset64=ulOffset64;
+
+		bEpochValid=bEpochValidInternal;
 
 	}
 
@@ -292,15 +354,17 @@ void ESP1588_Sync::FeedSync(PTP_PACKET & pkt, int port)
 
 
 
-#ifdef PTP_SYNCMGR_DEBUG
+/*#ifdef PTP_SYNCMGR_DEBUG
 	csprintf("SyncMgr %s %s millis: %u  diff: %d  peakdiff=%d\n",GetLockStatus()?"LOCKED":"UNLOCKED",adjust,ptpmillis,diff,peak_diff);
 #endif
+*/
 
-/*
-#ifdef PTP_SYNCMGR_DEBUG
-	csprintf("SyncMgr %s %s millis: %llu  %llu  diff=%lld\n",GetLockStatus()?"LOCKED":"UNLOCKED",adjust,ptpmillis64,GetEpochMillis64(),(int64_t) (GetEpochMillis64()-ptpmillis64));
+
+/*#ifdef PTP_SYNCMGR_DEBUG
+	csprintf("SyncMgr %s %s %s millis: %llu  %llu  diff=%lld\n",GetLockStatus()?"LOCKED":"UNLOCKED",adjust,GetEpochValid()?"EPOCH":"     ",ptpmillis64,GetEpochMillis64(),(int64_t) (GetEpochMillis64()-ptpmillis64));
 #endif
 */
+
 
 
 	bFirst=false;
@@ -309,12 +373,12 @@ void ESP1588_Sync::FeedSync(PTP_PACKET & pkt, int port)
 
 uint64_t ESP1588_Sync::GetEpochMillis64()
 {
-	return GetMillis()+ulOffset64;
+	return millis()+ulConfidentOffset+ulConfidentOffset64;
 }
 
 uint32_t ESP1588_Sync::GetMillis()
 {
-	uint32_t ret=millis()+ulOffset;
+	uint32_t ret=millis()+ulConfidentOffset;
 
 	int32_t diff=ret-ulLastMillisReturn;
 

@@ -27,7 +27,12 @@
 #include "SyncMgr.h"
 
 
+#ifndef NO_GLOBAL_INSTANCES
+#ifndef NO_GLOBAL_ESP1588
 extern ESP1588 esp1588;
+#endif
+#endif
+
 
 
 class ESP1588
@@ -44,6 +49,8 @@ public:
 	bool GetLockStatus();			//true if we're locked to a PTP clock
 	uint32_t GetMillis();			//returns PTP global epoch-based 32-bit milliseconds value
 
+	bool GetEverLocked();			//true if we're even been locked to a PTP clock
+
 	int16_t GetLastDiffMs();		//returns last difference between our time and the received sync packets
 
 
@@ -54,15 +61,17 @@ public:
 	ESP1588_Tracker & GetMaster() { return trackerCurMaster; }
 	ESP1588_Tracker & GetCandidate() { return trackerCandidate; }
 
+	const String & GetShortStatusString();
+
+	uint16_t GetRawPPS();			//raw packets per second
+
 protected:
+
+	String strShortStatus;
 
 
 	ESP1588_Tracker trackerCurMaster;
 	ESP1588_Tracker trackerCandidate;
-
-	uint8_t ucDomain=0;
-
-	bool bInitialized=false;
 
 	WiFiUDP Udp;
 	WiFiUDP Udp2;
@@ -72,6 +81,16 @@ protected:
 	void Maintenance();
 
 	ESP1588_Sync syncmgr;
+
+	uint16_t pps_counter=0;
+	uint16_t last_pps_count=0;
+
+	uint8_t ucDomain=0;
+
+	bool bInitialized=false;
+	bool bEverLocked=false;
+
+
 
 };
 

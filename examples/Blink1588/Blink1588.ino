@@ -108,7 +108,7 @@ void loop()
 	Serial.printf("\n");
 
   }
-  
+
 
   //turn the LEDs on one by one, once per second
   //by using esp1588.GetMillis() instead of millis(), magically it will be synchronized with other units.

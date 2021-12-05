@@ -51,9 +51,15 @@ private:
 
 	bool bFastInitial=false;
 
-	uint32_t ulOffset;
+	uint32_t ulOffset=0;
 
 	uint64_t ulOffset64=0;
+
+
+	uint32_t ulConfidentOffset=0;
+
+	uint64_t ulConfidentOffset64=0;
+
 
 	bool bEpochValid=false;
 
@@ -76,6 +82,10 @@ private:
 	uint32_t ulTwoStepReceiveTimestamp=0;
 	uint16_t usTwoStepSeqId=0;
 
+	bool bInitialDiffFinding=false;
+	uint32_t ulInitialDiffFindingTimestamp=0;
+
+	bool bEpochValidInternal=false;
 
 
 };
