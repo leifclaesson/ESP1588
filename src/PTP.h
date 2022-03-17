@@ -29,6 +29,10 @@
 
 #include <WiFiUDP.h>
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <lwip/def.h>
+#endif
+
 #if defined(PTP_SYNCMGR_DEBUG) | defined(PTP_TRACKER_DEBUG)
 //#include <LeifESPBase.h>
 #define csprintf Serial.printf

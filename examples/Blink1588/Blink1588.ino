@@ -1,7 +1,7 @@
 #if defined(ARDUINO_ARCH_ESP8266)
 #include <ESP8266WiFi.h>
 #else
-//#include <WiFi.h>
+#include <WiFi.h>
 #endif
 
 #include <ESP1588.h>

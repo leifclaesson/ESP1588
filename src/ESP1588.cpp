@@ -56,11 +56,11 @@ bool ESP1588::Begin()
 #if defined(ARDUINO_ARCH_ESP8266)
 	if(Udp.beginMulticast(WiFi.localIP(), ipMulticast, 319) && Udp2.beginMulticast(WiFi.localIP(), ipMulticast, 320))
 #else
-	if(Udp.beginMulticast(ipMulticast, 319) && Udp.beginMulticast(ipMulticast, 320))
+	if(Udp.beginMulticast(ipMulticast, 319) && Udp2.beginMulticast(ipMulticast, 320))
 #endif
 	{
 #ifdef PTP_MAIN_DEBUG
-		csprintf("Joined multicast group %s\n",ipMulticast.toString().c_str() );
+		Serial.printf("Joined multicast group %s\n",ipMulticast.toString().c_str() );
 #endif
 		return true;
 	}
@@ -69,7 +69,7 @@ bool ESP1588::Begin()
 		Udp.stop();
 		Udp2.stop();
 #ifdef PTP_MAIN_DEBUG
-		csprintf("### multicast join failed\n");
+		Serial.printf("### multicast join failed\n");
 #endif
 		return false;
 	}
@@ -90,7 +90,6 @@ void ESP1588::Loop()
 		udp->parsePacket();
 
 		int len=udp->read(packetBuffer,sizeof(packetBuffer));
-
 
 		if(len>=(int) sizeof(PTP_PACKET))
 		{
@@ -156,13 +155,11 @@ void ESP1588::Loop()
 
 
 
-
 	if(millis()-ulMaintenance>=1000)
 	{
 		ulMaintenance=millis();
 		Maintenance();
 	}
-
 
 
 }
