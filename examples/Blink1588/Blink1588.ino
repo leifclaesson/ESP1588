@@ -21,6 +21,8 @@
 
 
 
+
+
 #ifndef STASSID
 #define STASSID "your-ssid"
 #define STAPSK  "your-password"
@@ -30,15 +32,37 @@ const char* ssid     = STASSID;
 const char* password = STAPSK;
 
 
-uint8_t led_pin[]={4,5,12,13,14};  //which pins to use for LEDs. (D2,D1,D6,D7,D5)
+uint8_t led_pin[]={2};  //just the on-board LED
 
-//uint8_t led_pin[]={2};  //just the on-board LED
+//uint8_t led_pin[]={4,5,12,13,14};  //which pins to use for LEDs. (D2,D1,D6,D7,D5)
+
+//uint8_t led_pin[]={5,4,15,13,12,14,16};  //which pins to use for LEDs.
+
+
+
+
 
 bool invert_led=false;	//invert if active low
 
 
-
 #define NUM_LEDS ((int) (sizeof(led_pin)/sizeof(led_pin[0])))
+
+
+
+/*
+ * esp1588.GetMillis() returns continuous millis() until PTP lock is achieved, at which point the return value *jumps* to match the PTP epoch.
+ *
+ * A smooth transition between millis() and epoch is not useful (they could differ by days!) but if we just need a short time loop,
+ * for example to drive lights, then a smooth transition is desirable. I've provided a utility class to do just that.
+ *
+ * SmoothTimeLoop(2000,10);
+ * creates a 2 second long time loop (values: 0 - 1999 repeating), and it will speed up or slow down 10% while transitioning to epoch.
+ */
+
+SmoothTimeLoop timeloop(1000*NUM_LEDS,20);
+
+
+
 
 void setup()
 {
@@ -111,13 +135,16 @@ void loop()
 
 
   //turn the LEDs on one by one, once per second
-  //by using esp1588.GetMillis() instead of millis(), magically it will be synchronized with other units.
+  //by using esp1588.GetMillis() instead of millis(), it will magically be synchronized with other units.
+  //timeloop provides a smooth transition rather than jumping into sync.
 
-  bool halfcycle=esp1588.GetMillis() % 1000 > 500;
-  int current=(esp1588.GetMillis() % (1000 * NUM_LEDS)) / 1000;
+  int cur_interval=timeloop.GetCycleMillis(esp1588.GetMillis(),millis()) / 500;
+  int cur_led=cur_interval>>1;
+  int halfcycle=cur_interval & 1;
+
   for(int i=0;i<NUM_LEDS;i++)
   {
-	digitalWrite(led_pin[i],(i==current && halfcycle)^invert_led);
+	digitalWrite(led_pin[i],(i==cur_led && halfcycle)^invert_led);
   }
 	
 }

@@ -25,6 +25,7 @@
 
 #include "Tracker.h"
 #include "SyncMgr.h"
+#include "SmoothTimeLoop.h"
 
 
 #ifndef NO_GLOBAL_INSTANCES
