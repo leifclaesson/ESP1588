@@ -10,7 +10,7 @@
 #define abs(a) ((a)<0?-(a):(a))
 
 
-int32_t WrapAround(int32_t input, int32_t wrap)
+int32_t IRAM_ATTR WrapAround(int32_t input, int32_t wrap)
 {
 
 	if(input>=wrap)
@@ -36,7 +36,7 @@ SmoothTimeLoop::SmoothTimeLoop(int cycle_millis, int max_percent_adjustment)
 }
 
 
-uint32_t SmoothTimeLoop::GetCycleMillis(uint32_t esp1588_millis, uint32_t system_millis)
+uint32_t IRAM_ATTR SmoothTimeLoop::GetCycleMillis(uint32_t esp1588_millis, uint32_t system_millis)
 {
 	int32_t millis_since_last=system_millis-last_system_millis;
 	

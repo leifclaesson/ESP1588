@@ -186,7 +186,7 @@ void ESP1588::Quit()
 	syncmgr.Reset();
 }
 
-uint32_t ESP1588::GetMillis()
+uint32_t IRAM_ATTR ESP1588::GetMillis()
 {
 	return syncmgr.GetMillis();
 }

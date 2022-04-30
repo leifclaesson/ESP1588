@@ -376,7 +376,7 @@ uint64_t ESP1588_Sync::GetEpochMillis64()
 	return millis()+ulConfidentOffset+ulConfidentOffset64;
 }
 
-uint32_t ESP1588_Sync::GetMillis()
+uint32_t IRAM_ATTR ESP1588_Sync::GetMillis()
 {
 	uint32_t ret=millis()+ulConfidentOffset;
 
