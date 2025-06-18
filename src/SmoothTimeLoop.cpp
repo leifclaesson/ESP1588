@@ -55,7 +55,6 @@ uint32_t IRAM_ATTR SmoothTimeLoop::GetCycleMillis(uint32_t esp1588_millis, uint3
 		else if(needed_correction<-max_corr) needed_correction=-max_corr;
 	
 		offset_millis += needed_correction;
-		int bp=1;
 
 	}
 
